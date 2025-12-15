@@ -66,26 +66,26 @@ resource "aws_subnet" "private_2" {
   }
 }
 
-# Elastic IP for NAT Gateway (optional, for free tier testing leave disabled)
+# Elastic IP for NAT Gateway
 resource "aws_eip" "nat" {
-  count  = var.enable_nat_gateway ? 1 : 0
+  count  = var.enable_nat_gateway ? 2 : 0
   domain = "vpc"
 
   tags = {
-    Name = "simpletimeservice-nat-eip"
+    Name = "simpletimeservice-nat-eip-${count.index + 1}"
   }
 
   depends_on = [aws_internet_gateway.main]
 }
 
-# NAT Gateway (optional, costs $0.045/hour)
+# NAT Gateway (required for EC2 instances in private subnets)
 resource "aws_nat_gateway" "main" {
-  count         = var.enable_nat_gateway ? 1 : 0
-  allocation_id = aws_eip.nat[0].id
-  subnet_id     = aws_subnet.public_1.id
+  count         = var.enable_nat_gateway ? 2 : 0
+  allocation_id = aws_eip.nat[count.index].id
+  subnet_id     = count.index == 0 ? aws_subnet.public_1.id : aws_subnet.public_2.id
 
   tags = {
-    Name = "simpletimeservice-nat"
+    Name = "simpletimeservice-nat-${count.index + 1}"
   }
 
   depends_on = [aws_internet_gateway.main]
@@ -105,7 +105,7 @@ resource "aws_route_table" "public" {
   }
 }
 
-resource "aws_route_table" "private" {
+resource "aws_route_table" "private_1" {
   vpc_id = aws_vpc.main.id
 
   dynamic "route" {
@@ -117,11 +117,31 @@ resource "aws_route_table" "private" {
   }
 
   tags = {
-    Name = "simpletimeservice-private-rt"
+    Name = "simpletimeservice-private-rt-1"
   }
+
+  depends_on = [aws_nat_gateway.main]
 }
 
-# Route Table Associations - Public
+resource "aws_route_table" "private_2" {
+  vpc_id = aws_vpc.main.id
+
+  dynamic "route" {
+    for_each = var.enable_nat_gateway ? [1] : []
+    content {
+      cidr_block     = "0.0.0.0/0"
+      nat_gateway_id = aws_nat_gateway.main[1].id
+    }
+  }
+
+  tags = {
+    Name = "simpletimeservice-private-rt-2"
+  }
+
+  depends_on = [aws_nat_gateway.main]
+}
+
+# Public Route Table Associations
 resource "aws_route_table_association" "public_1" {
   subnet_id      = aws_subnet.public_1.id
   route_table_id = aws_route_table.public.id
@@ -132,15 +152,15 @@ resource "aws_route_table_association" "public_2" {
   route_table_id = aws_route_table.public.id
 }
 
-# Route Table Associations - Private
+# Private Route Table Associations (one per AZ)
 resource "aws_route_table_association" "private_1" {
   subnet_id      = aws_subnet.private_1.id
-  route_table_id = aws_route_table.private.id
+  route_table_id = aws_route_table.private_1.id
 }
 
 resource "aws_route_table_association" "private_2" {
   subnet_id      = aws_subnet.private_2.id
-  route_table_id = aws_route_table.private.id
+  route_table_id = aws_route_table.private_2.id
 }
 
 # Data source for availability zones

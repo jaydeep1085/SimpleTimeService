@@ -73,5 +73,29 @@ variable "ecs_task_memory" {
 variable "enable_nat_gateway" {
   description = "Enable NAT Gateway for private subnets (cost: $0.045/hour)"
   type        = bool
-  default     = false # Disabled for free tier testing
+  default     = true # Required for EC2 instances in private subnets
+}
+
+variable "instance_type" {
+  description = "EC2 instance type for ECS (t2.micro for free tier eligibility)"
+  type        = string
+  default     = "t2.micro"
+}
+
+variable "desired_capacity" {
+  description = "Desired number of EC2 instances"
+  type        = number
+  default     = 1
+}
+
+variable "min_capacity" {
+  description = "Minimum number of instances"
+  type        = number
+  default     = 1
+}
+
+variable "max_capacity" {
+  description = "Maximum number of instances"
+  type        = number
+  default     = 2
 }

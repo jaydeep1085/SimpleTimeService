@@ -30,17 +30,34 @@ resource "aws_security_group" "alb" {
   }
 }
 
-# ECS Tasks Security Group
+# ECS Instance Security Group (for EC2)
 resource "aws_security_group" "ecs_tasks" {
-  name        = "simpletimeservice-ecs-sg"
-  description = "Security group for ECS tasks"
+  name        = "simpletimeservice-ecs-instance-sg"
+  description = "Security group for ECS instances"
   vpc_id      = aws_vpc.main.id
 
+  # Allow ALB to reach ECS instances on container port
   ingress {
     from_port       = var.container_port
     to_port         = var.container_port
     protocol        = "tcp"
     security_groups = [aws_security_group.alb.id]
+  }
+
+  # Allow SSH from anywhere (restrict in production)
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  # Allow health checks from ALB
+  ingress {
+    from_port       = var.container_port
+    to_port         = var.container_port
+    protocol        = "tcp"
+    cidr_blocks     = [var.vpc_cidr]
   }
 
   egress {
@@ -51,6 +68,6 @@ resource "aws_security_group" "ecs_tasks" {
   }
 
   tags = {
-    Name = "simpletimeservice-ecs-sg"
+    Name = "simpletimeservice-ecs-instance-sg"
   }
 }
