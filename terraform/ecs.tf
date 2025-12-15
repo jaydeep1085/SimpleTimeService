@@ -23,19 +23,8 @@ resource "aws_ecs_cluster" "main" {
 }
 
 # ECS Cluster Capacity Providers (for EC2 launch type)
-resource "aws_ecs_cluster_capacity_providers" "main" {
-  cluster_name = aws_ecs_cluster.main.name
-
-  capacity_providers = ["CAPACITY_PROVIDER_AUTO_SCALING"]
-
-  default_capacity_provider_strategy {
-    base              = 1
-    weight            = 100
-    capacity_provider = "CAPACITY_PROVIDER_AUTO_SCALING"
-  }
-
-  depends_on = [aws_ecs_cluster.main]
-}
+# Using default capacity provider strategy for EC2 launch type
+# Capacity provider registration is handled automatically by ASG
 
 # Get latest ECS-optimized AMI
 data "aws_ami" "ecs" {
@@ -120,11 +109,13 @@ resource "aws_autoscaling_group" "ecs" {
   depends_on = [aws_ecs_cluster.main]
 }
 
-# ECS Task Definition (EC2 launch type)
+# ECS Task Definition (EC2 launch type with awsvpc)
 resource "aws_ecs_task_definition" "main" {
   family                   = "simpletimeservice"
-  network_mode             = "bridge"
+  network_mode             = "awsvpc"
   requires_compatibilities = ["EC2"]
+  cpu                      = "256"
+  memory                   = "512"
 
   container_definitions = jsonencode([{
     name      = "simpletimeservice"
@@ -133,7 +124,7 @@ resource "aws_ecs_task_definition" "main" {
 
     portMappings = [{
       containerPort = var.container_port
-      hostPort      = 0  # Dynamic port mapping via ALB
+      hostPort      = var.container_port
       protocol      = "tcp"
     }]
 
@@ -163,13 +154,19 @@ resource "aws_ecs_task_definition" "main" {
   }
 }
 
-# ECS Service (EC2 launch type)
+# ECS Service (EC2 launch type with awsvpc)
 resource "aws_ecs_service" "main" {
   name            = "simpletimeservice-service"
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.main.arn
   desired_count   = var.desired_capacity
   launch_type     = "EC2"
+
+  network_configuration {
+    subnets          = [aws_subnet.private_1.id, aws_subnet.private_2.id]
+    security_groups  = [aws_security_group.ecs_tasks.id]
+    assign_public_ip = false
+  }
 
   load_balancer {
     target_group_arn = aws_lb_target_group.main.arn
